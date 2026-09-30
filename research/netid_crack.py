@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Werks-NetKey gegen die bekannte Netz-ID der Remote testen.
+Test the factory NetKey against the remote's known network ID.
 
-Ein Mesh-Knoten advertised seine Network-ID = k3(NetKey). k3 ist
-einweg (nicht umkehrbar), aber wir koennen JEDEN Kandidaten pruefen:
-k3(kandidat) == Ziel?  Trifft ein Default -> Werks-NetKey gefunden (ohne
-Hardware, ohne Ciphertext).
+A mesh node advertises its network ID = k3(NetKey). k3 is one-way (not
+reversible), but we can check EVERY candidate: k3(candidate) == target? If a
+default matches -> factory NetKey found (no hardware, no ciphertext).
 
     python3 netid_crack.py <netid_hex>
 
-Die 8-Byte Network-ID liest man aus dem 0x1828-Advertising-Service-Data des
-Zielknotens (Byte 0 = 0x00 = Network-ID-Typ, danach die 8 Byte). Siehe
+You read the 8-byte network ID from the target node's 0x1828 advertising
+service data (byte 0 = 0x00 = network ID type, then the 8 bytes). See
 dump_lamp_adv.py.
 """
 
-# --- Pfad-Bootstrap: dieses Tool liegt in research/, der Stack + die
-# Config (skylight-mesh.json) liegen im Repo-Root eine Ebene hoeher. ---
+# --- Path bootstrap: this tool lives in research/, while the stack + the
+# config (skylight-mesh.json) live in the repo root one level up. ---
 import os as _os, sys as _sys
 _ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _sys.path.insert(0, _ROOT)
@@ -31,7 +30,7 @@ def ascii_key(s: str) -> str:
     return s.encode()[:16].ljust(16, b"\x00").hex()
 
 
-# breite Default-/Rate-Liste (16-Byte hex)
+# broad list of defaults/guesses (16-byte hex)
 EXTRA = [ascii_key(s) for s in (
     "telink_mesh1", "TelinkMeshAll", "telink", "123", "12345678",
     "telink_ble_mesh", "TelinkSigMesh", "BK_MESH_light", "BK_MESH",
@@ -50,11 +49,11 @@ EXTRA = [ascii_key(s) for s in (
 
 def main():
     if len(sys.argv) < 2:
-        print("Aufruf: python3 netid_crack.py <netid_hex>  (8 Byte)")
+        print("Usage: python3 netid_crack.py <netid_hex>  (8 bytes)")
         return 2
     target = bytes.fromhex(sys.argv[1])
     cands = list(BUILTIN_CANDIDATES) + [(f"extra{i}", h) for i, h in enumerate(EXTRA)]
-    print(f"Ziel-Netz-ID: {target.hex()}  ({len(cands)} Kandidaten)")
+    print(f"Target network ID: {target.hex()}  ({len(cands)} candidates)")
     for name, hexk in cands:
         try:
             key = bytes.fromhex(hexk)
@@ -63,10 +62,10 @@ def main():
         if len(key) != 16:
             continue
         if crypto.k3(key) == target:
-            print(f"\n>>> TREFFER! Werks-NetKey = {hexk}  ({name})")
+            print(f"\n>>> HIT! Factory NetKey = {hexk}  ({name})")
             return 0
-    print("\nKein Default trifft -> Werks-NetKey ist (wie zu erwarten) "
-          "zufaellig. Nur ein Firmware-Dump liefert ihn.")
+    print("\nNo default matches -> the factory NetKey is (as expected) "
+          "random. Only a firmware dump yields it.")
     return 1
 
 
