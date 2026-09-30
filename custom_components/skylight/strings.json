@@ -12,7 +12,7 @@
       },
       "provision": {
         "title": "Provision the lamp",
-        "description": "Factory-reset the Skylight and keep it powered and within Bluetooth range of Home Assistant, then press Submit. This adopts {mac} into a new mesh network (taking it away from the original Philips remote) and stores the keys. It takes about 20 seconds.\n\nDetected Bluetooth state: {state}.{error}"
+        "description": "Factory-reset the Skylight and keep it powered and within Bluetooth range of Home Assistant, then press Submit. This adopts {mac} into a new mesh network (taking it away from the original Philips remote) and stores the keys. It takes about 20 seconds.\n\nDetected Bluetooth state: {state}.\nCan connect via: {adapters}.{error}"
       },
       "keys": {
         "title": "Skylight mesh keys",

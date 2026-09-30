@@ -14,7 +14,8 @@ import asyncio
 import logging
 import os
 
-from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from bleak import BleakClient
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -81,8 +82,11 @@ async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
             raise ProvisioningError(
                 f"lamp {mac} is not reachable over Bluetooth (in range of a "
                 "proxy/adapter?)")
+        # A fresh (non-caching) client forces a full GATT discovery every
+        # attempt -- the same way the proven CLI provisioner connects, and
+        # immune to a stale HA/BlueZ service cache.
         client = await establish_connection(
-            BleakClientWithServiceCache, device, f"Skylight {mac}",
+            BleakClient, device, f"Skylight {mac}",
             max_attempts=CONNECT_ATTEMPTS)
         if _has_char(client, need_uuid):
             return client

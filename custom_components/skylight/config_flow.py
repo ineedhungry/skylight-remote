@@ -13,6 +13,7 @@ from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 
+from .bt import _is_remote
 from .const import CONF_MAC, DOMAIN, REQUIRED_KEYS
 from .provisioning import ProvisioningError, async_provision
 
@@ -55,6 +56,24 @@ def _adv_state(hass, mac: str) -> str:
             return ("already provisioned — it must be unpaired first "
                     "(that needs the original remote; there is no keyless reset)")
     return "unknown (no recent advertisement — will attempt anyway)"
+
+
+def _adapters_report(hass, mac: str) -> str:
+    """List the adapters/proxies that can currently connect to the lamp."""
+    mac = (mac or "").upper()
+    try:
+        devices = bluetooth.async_scanner_devices_by_address(
+            hass, mac, connectable=True)
+    except Exception:  # noqa: BLE001
+        return "unknown"
+    if not devices:
+        return "none can connect right now (too far, asleep, or proxy-only)"
+    parts = []
+    for d in devices:
+        kind = "proxy" if _is_remote(d.scanner) else "HA local adapter"
+        rssi = d.advertisement.rssi if d.advertisement else "?"
+        parts.append(f"{kind} ({rssi} dBm)")
+    return "; ".join(parts)
 
 
 def _candidates(hass) -> dict[str, str]:
@@ -163,6 +182,7 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "mac": self._mac or "the lamp",
                 "state": _adv_state(self.hass, self._mac),
+                "adapters": _adapters_report(self.hass, self._mac),
                 "error": detail,
             },
         )
