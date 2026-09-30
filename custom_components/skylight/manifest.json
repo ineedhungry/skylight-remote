@@ -1,7 +1,7 @@
 {
   "domain": "skylight",
   "name": "Philips Skylight (BLE Mesh)",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "codeowners": [
     "@l-carta"
   ],

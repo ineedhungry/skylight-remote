@@ -116,11 +116,22 @@ async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
                 await clear()
             except Exception:  # noqa: BLE001
                 pass
-        try:
-            await client.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
-        await asyncio.sleep(1.5)
+        # Also remove the device from BlueZ so its on-disk GATT cache is
+        # dropped and the next connect does a genuinely fresh discovery.
+        removed = False
+        unpair = getattr(client, "unpair", None)
+        if unpair is not None:
+            try:
+                await unpair()
+                removed = True
+            except Exception:  # noqa: BLE001
+                pass
+        if not removed:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+        await asyncio.sleep(2.5)
 
     if last_missing:
         short = need_uuid[4:8]
