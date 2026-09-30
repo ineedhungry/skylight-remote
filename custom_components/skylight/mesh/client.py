@@ -108,20 +108,27 @@ class MeshSession:
         self.cfg["tid"] = (self.cfg["tid"] + 1) & 0xFF
         return self.cfg["tid"]
 
-    async def _send_access(self, opcode: int, params: bytes, ttl: int = 5) -> None:
+    async def send_access(
+        self, key: bytes, is_app: bool, dst: int, opcode: int, params: bytes,
+        ttl: int = 5,
+    ) -> None:
+        """Encrypt and send an access message with the given key."""
         access = network.encode_access(opcode, params)
         seq = self.cfg["seq"]
         pdus = network.build_transport_pdus(
-            self.ctx, self.app_key, True, seq, self.src, self.dst, access)
+            self.ctx, key, is_app, seq, self.src, dst, access)
         for i, transport in enumerate(pdus):
             net = network.encode_network_pdu(
-                self.ctx, 0, ttl, seq + i, self.src, self.dst, transport)
+                self.ctx, 0, ttl, seq + i, self.src, dst, transport)
             await self.client.write_gatt_char(
                 PROXY_DATA_IN, bytes([0x00]) + net, response=False)
             await asyncio.sleep(0.05)
         self.cfg["seq"] = seq + len(pdus)
 
-    async def _wait_status(self, expect_opcode: int, timeout: float) -> bytes:
+    async def wait_status(
+        self, key: bytes, is_app: bool, expect_opcode: int, timeout: float,
+    ) -> bytes:
+        """Wait for a decodable status message with the expected opcode."""
         loop = asyncio.get_event_loop()
         deadline = loop.time() + timeout
         while True:
@@ -134,7 +141,7 @@ class MeshSession:
             if ctl:
                 continue
             access = network.decrypt_access(
-                self.ctx, self.app_key, True, seq, src, dst, transport)
+                self.ctx, key, is_app, seq, src, dst, transport)
             if access is None:
                 continue
             opcode, params = network.parse_access(access)
@@ -144,10 +151,10 @@ class MeshSession:
     async def _request(self, opcode: int, params: bytes) -> bytes:
         last_err: Exception | None = None
         for _ in range(STATUS_ATTEMPTS):
-            await self._send_access(opcode, params)
+            await self.send_access(self.app_key, True, self.dst, opcode, params)
             try:
-                return await self._wait_status(
-                    OP_ONOFF_STATUS, timeout=STATUS_TIMEOUT)
+                return await self.wait_status(
+                    self.app_key, True, OP_ONOFF_STATUS, timeout=STATUS_TIMEOUT)
             except TimeoutError as err:
                 last_err = err
         assert last_err is not None

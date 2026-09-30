@@ -2,6 +2,18 @@
   "config": {
     "flow_title": "{name}",
     "step": {
+      "choose": {
+        "title": "Set up the Skylight",
+        "description": "Provision a fresh, factory-reset lamp directly from Home Assistant, or paste the keys from a lamp you provisioned earlier with the project's provision.py.",
+        "menu_options": {
+          "provision": "Provision a new lamp (recommended)",
+          "keys": "I already have mesh keys"
+        }
+      },
+      "provision": {
+        "title": "Provision the lamp",
+        "description": "Factory-reset the Skylight and keep it powered and within Bluetooth range of Home Assistant, then press Submit. This adopts {mac} into a new mesh network (taking it away from the original Philips remote) and stores the keys. It takes about 20 seconds."
+      },
       "keys": {
         "title": "Skylight mesh keys",
         "description": "Paste the full contents of the `skylight-mesh.json` produced by provisioning {mac} with the project's `provision.py`. It holds the NetKey/AppKey/DevKey and the lamp's unicast address.",
@@ -13,10 +25,12 @@
     "error": {
       "invalid_json": "That is not valid JSON. Paste the entire skylight-mesh.json file.",
       "missing_keys": "The JSON is missing required mesh keys (need mac, net_key, app_key, dev_key, unicast, src, iv_index).",
-      "mac_mismatch": "The MAC in the pasted keys does not match the discovered lamp."
+      "mac_mismatch": "The MAC in the pasted keys does not match the discovered lamp.",
+      "provision_failed": "Provisioning failed. Make sure the lamp is factory-reset (advertising as unprovisioned) and in Bluetooth range, then try again."
     },
     "abort": {
-      "already_configured": "This Skylight is already configured."
+      "already_configured": "This Skylight is already configured.",
+      "no_device": "No Skylight was found in Bluetooth range. Power it on, keep it close, and try again."
     }
   }
 }
