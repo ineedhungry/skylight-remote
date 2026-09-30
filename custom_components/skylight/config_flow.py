@@ -11,6 +11,7 @@ import voluptuous as vol
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.const import CONF_ADDRESS
 
 from .const import CONF_MAC, DOMAIN, REQUIRED_KEYS
 from .provisioning import ProvisioningError, async_provision
@@ -41,13 +42,23 @@ def _parse_keys(raw: str) -> dict:
     return keys
 
 
-def _find_lamp(hass) -> str | None:
-    """Look for a Skylight in the current Bluetooth advertisements."""
+def _candidates(hass) -> dict[str, str]:
+    """Discovered devices that look like a Skylight, as {address: label}.
+
+    Prefers the strong signals (the BK_MESH_light name or the unprovisioned
+    Mesh Provisioning service); also includes proxy-advertising mesh nodes so a
+    lamp that is already in a network can still be selected for the keys path.
+    """
+    out: dict[str, str] = {}
     for info in bluetooth.async_discovered_service_info(hass, connectable=True):
         uuids = {u.lower() for u in info.service_uuids}
-        if info.name == LAMP_NAME or UNPROVISIONED_UUID in uuids or PROXY_UUID in uuids:
-            return info.address
-    return None
+        is_lamp = info.name == LAMP_NAME or UNPROVISIONED_UUID in uuids
+        is_mesh = PROXY_UUID in uuids
+        if is_lamp or is_mesh:
+            name = info.name or ("Skylight" if is_lamp else "Mesh device")
+            tag = "" if (is_lamp or not is_mesh) else " — already provisioned"
+            out[info.address] = f"{name} ({info.address}){tag}"
+    return out
 
 
 class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -71,10 +82,28 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle a user-initiated setup (no discovery)."""
-        if self._mac is None:
-            self._mac = _find_lamp(self.hass)
-        return await self.async_step_choose()
+        """Handle a user-initiated setup: pick which device to set up."""
+        return await self.async_step_pick()
+
+    async def async_step_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user choose the discovered device (its BLE address)."""
+        if user_input is not None:
+            self._mac = user_input[CONF_ADDRESS]
+            await self.async_set_unique_id(self._mac, raise_on_progress=False)
+            self._abort_if_unique_id_configured()
+            return await self.async_step_choose()
+
+        candidates = _candidates(self.hass)
+        if not candidates:
+            return self.async_abort(reason="no_device")
+
+        return self.async_show_form(
+            step_id="pick",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_ADDRESS): vol.In(candidates)}),
+        )
 
     async def async_step_choose(
         self, user_input: dict[str, Any] | None = None
@@ -91,11 +120,9 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
         """Provision a fresh, factory-reset lamp over HA's Bluetooth."""
         errors: dict[str, str] = {}
         if self._mac is None:
-            self._mac = _find_lamp(self.hass)
+            return await self.async_step_pick()
 
         if user_input is not None:
-            if self._mac is None:
-                return self.async_abort(reason="no_device")
             try:
                 keys = await async_provision(self.hass, self._mac)
             except ProvisioningError as err:

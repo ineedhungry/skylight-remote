@@ -20,6 +20,13 @@
         "data": {
           "config_json": "skylight-mesh.json contents"
         }
+      },
+      "pick": {
+        "title": "Select your Skylight",
+        "description": "Choose the lamp to set up. If you're provisioning a fresh lamp, pick the one showing the BK_MESH_light name (a factory-reset lamp advertises as unprovisioned).",
+        "data": {
+          "address": "Device"
+        }
       }
     },
     "error": {
