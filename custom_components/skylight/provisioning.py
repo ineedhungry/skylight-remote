@@ -20,7 +20,8 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from .mesh import network, provisioner
-from .mesh.client import MeshSession
+from .mesh.client import MeshSession, PROXY_DATA_OUT
+from .mesh.provisioner import PROV_DATA_OUT
 from .const import REQUIRED_KEYS
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,6 +49,66 @@ class ProvisioningError(Exception):
 
 def _get_device(hass: HomeAssistant, mac: str):
     return bluetooth.async_ble_device_from_address(hass, mac, connectable=True)
+
+
+def _has_char(client, uuid: str) -> bool:
+    """Whether the connected client's discovered GATT has this characteristic."""
+    try:
+        if client.services.get_characteristic(uuid) is not None:
+            return True
+    except Exception:  # noqa: BLE001 - fall back to a manual scan
+        pass
+    target = uuid.lower()
+    return any(
+        c.uuid.lower() == target
+        for s in client.services
+        for c in s.characteristics
+    )
+
+
+async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
+    """Connect and guarantee `need_uuid` is present, busting a stale GATT cache.
+
+    Proxy connections sometimes return an incomplete/cached service table that
+    is missing the mesh characteristics; clearing the cache and rediscovering
+    fixes it.
+    """
+    last_missing = False
+    for attempt in range(3):
+        device = _get_device(hass, mac)
+        if device is None:
+            raise ProvisioningError(
+                f"lamp {mac} is not reachable over Bluetooth (in range of a "
+                "proxy/adapter?)")
+        client = await establish_connection(
+            BleakClientWithServiceCache, device, f"Skylight {mac}",
+            max_attempts=CONNECT_ATTEMPTS)
+        if _has_char(client, need_uuid):
+            return client
+        last_missing = True
+        _LOGGER.debug(
+            "char %s missing on attempt %d; clearing GATT cache and retrying",
+            need_uuid, attempt + 1)
+        clear = getattr(client, "clear_cache", None)
+        if clear is not None:
+            try:
+                await clear()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            await client.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+        await asyncio.sleep(1.5)
+
+    if last_missing:
+        short = need_uuid[4:8]
+        raise ProvisioningError(
+            f"the mesh characteristic 0x{short} was not found on the lamp's "
+            "GATT table even after clearing the cache. This is almost always a "
+            "stale service cache on the ESPHome Bluetooth proxy. Restart the "
+            "ESP proxy (or move the lamp near HA's built-in adapter) and retry.")
+    raise ProvisioningError("could not connect to the lamp")
 
 
 async def _wait_for_device(hass: HomeAssistant, mac: str, timeout: float):
@@ -91,20 +152,14 @@ async def _appkey_add_and_bind(session: MeshSession, cfg: dict) -> None:
 async def async_provision(hass: HomeAssistant, mac: str) -> dict:
     """Provision a fresh lamp and return its keys dict."""
     mac = mac.upper()
-    device = _get_device(hass, mac)
-    if device is None:
-        raise ProvisioningError(
-            f"lamp {mac} is not reachable over Bluetooth (in range? "
-            "factory-reset so it advertises as unprovisioned?)")
 
     net_key = os.urandom(16)
     app_key = os.urandom(16)
     iv_index = 0
 
-    # 1) PB-GATT provisioning over a direct connection.
-    client = await establish_connection(
-        BleakClientWithServiceCache, device, f"Skylight {mac}",
-        max_attempts=CONNECT_ATTEMPTS)
+    # 1) PB-GATT provisioning over a direct connection. Ensure the provisioning
+    #    data-out characteristic is actually present (busting a stale cache).
+    client = await _connect(hass, mac, PROV_DATA_OUT)
     try:
         dev_key = await provisioner.provision(
             client, net_key, 0, iv_index, LAMP_ADDR, log=_LOGGER.debug)
@@ -130,10 +185,8 @@ async def async_provision(hass: HomeAssistant, mac: str) -> dict:
 
     # 2) The lamp reboots as a proxy; wait, then bind the AppKey.
     await asyncio.sleep(PROXY_RESTART_WAIT)
-    device = await _wait_for_device(hass, mac, REDISCOVER_TIMEOUT)
-    client = await establish_connection(
-        BleakClientWithServiceCache, device, f"Skylight {mac}",
-        max_attempts=CONNECT_ATTEMPTS)
+    await _wait_for_device(hass, mac, REDISCOVER_TIMEOUT)
+    client = await _connect(hass, mac, PROXY_DATA_OUT)
     session = MeshSession(client, cfg)
     try:
         await session.start()
