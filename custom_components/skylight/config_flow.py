@@ -42,6 +42,21 @@ def _parse_keys(raw: str) -> dict:
     return keys
 
 
+def _adv_state(hass, mac: str) -> str:
+    """Report the lamp's advertised mesh state: unprovisioned/provisioned."""
+    mac = (mac or "").upper()
+    for info in bluetooth.async_discovered_service_info(hass, connectable=True):
+        if info.address.upper() != mac:
+            continue
+        uuids = {u.lower() for u in info.service_uuids}
+        if UNPROVISIONED_UUID in uuids:
+            return "unprovisioned — ready to provision"
+        if PROXY_UUID in uuids:
+            return ("already provisioned — it must be unpaired first "
+                    "(that needs the original remote; there is no keyless reset)")
+    return "unknown (no recent advertisement — will attempt anyway)"
+
+
 def _candidates(hass) -> dict[str, str]:
     """Discovered devices that look like a Skylight, as {address: label}.
 
@@ -122,15 +137,18 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._mac is None:
             return await self.async_step_pick()
 
+        detail = ""
         if user_input is not None:
             try:
                 keys = await async_provision(self.hass, self._mac)
             except ProvisioningError as err:
                 _LOGGER.warning("Skylight provisioning failed: %s", err)
                 errors["base"] = "provision_failed"
-            except Exception:  # noqa: BLE001
+                detail = f"\n\n⚠️ Last attempt failed: {err}"
+            except Exception as err:  # noqa: BLE001
                 _LOGGER.exception("Unexpected error provisioning Skylight")
                 errors["base"] = "provision_failed"
+                detail = f"\n\n⚠️ Last attempt failed: {err}"
             else:
                 await self.async_set_unique_id(
                     keys[CONF_MAC], raise_on_progress=False)
@@ -142,7 +160,11 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="provision",
             data_schema=vol.Schema({}),
             errors=errors,
-            description_placeholders={"mac": self._mac or "the lamp"},
+            description_placeholders={
+                "mac": self._mac or "the lamp",
+                "state": _adv_state(self.hass, self._mac),
+                "error": detail,
+            },
         )
 
     async def async_step_keys(
