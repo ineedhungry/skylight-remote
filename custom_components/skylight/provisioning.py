@@ -53,6 +53,20 @@ def _get_device(hass: HomeAssistant, mac: str):
     return local_ble_device(hass, mac)
 
 
+def _describe_services(client) -> str:
+    """Compact list of discovered services and their characteristics."""
+    try:
+        parts = []
+        for s in client.services:
+            short = s.uuid.split("-")[0][-4:]
+            chars = ",".join(
+                c.uuid.split("-")[0][-4:] for c in s.characteristics)
+            parts.append(f"{short}[{chars}]" if chars else short)
+        return " ".join(parts) or "empty"
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
 def _has_char(client, uuid: str) -> bool:
     """Whether the connected client's discovered GATT has this characteristic."""
     try:
@@ -76,6 +90,7 @@ async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
     fixes it.
     """
     last_missing = False
+    discovered = "none"
     for attempt in range(3):
         device = _get_device(hass, mac)
         if device is None:
@@ -91,9 +106,10 @@ async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
         if _has_char(client, need_uuid):
             return client
         last_missing = True
-        _LOGGER.debug(
-            "char %s missing on attempt %d; clearing GATT cache and retrying",
-            need_uuid, attempt + 1)
+        discovered = _describe_services(client)
+        _LOGGER.warning(
+            "char %s missing on attempt %d; discovered GATT: %s",
+            need_uuid, attempt + 1, discovered)
         clear = getattr(client, "clear_cache", None)
         if clear is not None:
             try:
@@ -109,10 +125,10 @@ async def _connect(hass: HomeAssistant, mac: str, need_uuid: str):
     if last_missing:
         short = need_uuid[4:8]
         raise ProvisioningError(
-            f"the mesh characteristic 0x{short} was not found on the lamp's "
-            "GATT table even after clearing the cache. This is almost always a "
-            "stale service cache on the ESPHome Bluetooth proxy. Restart the "
-            "ESP proxy (or move the lamp near HA's built-in adapter) and retry.")
+            f"mesh characteristic 0x{short} not found. Discovered GATT: "
+            f"{discovered}. (If this shows 0x1828/2ade instead of 0x1827/2adc, "
+            "the lamp is provisioned, not fresh; if it shows 0x1827 without "
+            "2adc, it's a stale BlueZ/proxy cache.)")
     raise ProvisioningError("could not connect to the lamp")
 
 
