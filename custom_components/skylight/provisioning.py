@@ -19,6 +19,7 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
+from .bt import local_ble_device
 from .mesh import network, provisioner
 from .mesh.client import MeshSession, PROXY_DATA_OUT
 from .mesh.provisioner import PROV_DATA_OUT
@@ -48,7 +49,7 @@ class ProvisioningError(Exception):
 
 
 def _get_device(hass: HomeAssistant, mac: str):
-    return bluetooth.async_ble_device_from_address(hass, mac, connectable=True)
+    return local_ble_device(hass, mac)
 
 
 def _has_char(client, uuid: str) -> bool:

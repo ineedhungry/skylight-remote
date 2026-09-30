@@ -7,10 +7,10 @@ import logging
 
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
-from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .bt import local_ble_device
 from .const import (
     CONF_SEQ,
     CONF_TID,
@@ -62,8 +62,7 @@ class SkylightDevice:
 
     async def _run(self, action: str, on: bool | None = None) -> bool:
         assert self._cfg is not None
-        ble_device = bluetooth.async_ble_device_from_address(
-            self.hass, self.mac, connectable=True)
+        ble_device = local_ble_device(self.hass, self.mac)
         if ble_device is None:
             self.available = False
             raise RuntimeError(
