@@ -183,23 +183,30 @@ async def async_provision(hass: HomeAssistant, mac: str) -> dict:
         "tid": 0,
     }
 
-    # 2) The lamp reboots as a proxy; wait, then bind the AppKey.
-    await asyncio.sleep(PROXY_RESTART_WAIT)
-    await _wait_for_device(hass, mac, REDISCOVER_TIMEOUT)
-    client = await _connect(hass, mac, PROXY_DATA_OUT)
-    session = MeshSession(client, cfg)
+    # 2) The lamp reboots as a proxy; wait, then bind the AppKey. This is
+    #    best-effort: PB-GATT already minted the keys and the lamp is now in OUR
+    #    network, so we must NEVER lose them here -- otherwise the lamp would be
+    #    stranded in a network we can't talk to (and can't reset without the
+    #    remote). If binding fails we keep the keys and surface a warning; the
+    #    entry is still created so we can retry/recover with the DevKey we hold.
     try:
-        await session.start()
-        await _appkey_add_and_bind(session, cfg)
-    except ProvisioningError:
-        raise
-    except Exception as err:  # noqa: BLE001
-        raise ProvisioningError(f"AppKey/bind step failed: {err}") from err
-    finally:
-        await session.stop()
+        await asyncio.sleep(PROXY_RESTART_WAIT)
+        await _wait_for_device(hass, mac, REDISCOVER_TIMEOUT)
+        client = await _connect(hass, mac, PROXY_DATA_OUT)
         try:
-            await client.disconnect()
-        except Exception:  # noqa: BLE001
-            pass
+            session = MeshSession(client, cfg)
+            await session.start()
+            await _appkey_add_and_bind(session, cfg)
+            await session.stop()
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "Skylight PB-GATT provisioning succeeded but AppKey/bind did not "
+            "complete (%s). Keeping the keys so the lamp isn't stranded; on/off "
+            "may not work until it is re-bound.", err)
 
     return {k: cfg[k] for k in REQUIRED_KEYS}
