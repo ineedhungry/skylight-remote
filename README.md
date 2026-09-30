@@ -72,6 +72,59 @@ anyway, and BLE is onboard.
 
 ---
 
+## Home Assistant
+
+There are two ways to get the lamp into Home Assistant. Pick one — they both
+want to own the mesh proxy connection, which is exclusive, so don't run both
+against the same lamp.
+
+### Native integration (HACS) — recommended
+
+`custom_components/skylight/` is a native HA integration: a real config-flow
+device with a `light.skylight` entity, no MQTT and no separate Pi service. It
+runs the mesh stack (a vendored copy of `meshlib/`) **inside** Home Assistant
+and reaches the lamp over HA's own Bluetooth — including through an **ESPHome
+Bluetooth proxy** with active connections enabled. If your proxies cover the
+lamp, the Raspberry Pi and the MQTT bridge are no longer needed at all.
+
+- **Connect-on-demand:** each command opens a GATT connection (routed to the
+  best proxy), sets/reads, and disconnects — friendly to an ESP32's limited
+  connection slots. State is **optimistic**: the commanded state shows
+  instantly and is restored across restarts, so "on" is immediate; the BLE
+  write happens in the background.
+- **Sequence counter** is persisted in HA storage and jumped forward on load,
+  so the lamp's replay protection doesn't lock HA out after a restart.
+
+**Requirements**
+
+- Home Assistant 2024.8+ with the Bluetooth integration, and either a local
+  Bluetooth adapter in range of the lamp **or** an ESP32 running ESPHome with:
+
+  ```yaml
+  bluetooth_proxy:
+    active: true
+  ```
+
+- A provisioned `skylight-mesh.json` (run `python3 provision.py` once from any
+  machine with a local BLE adapter near the lamp — even the Pi, one last time).
+
+**Install**
+
+1. In HACS → ⋮ → *Custom repositories*, add
+   `https://gitea.ineedhungry.com/gstranga/skylight-remote` with category
+   **Integration**, then install it and restart HA.
+2. HA auto-discovers `BK_MESH_light` through a proxy and offers *Configure*
+   (or add it manually via *Settings → Devices & services → Add integration →
+   Philips Skylight*).
+3. Paste the full contents of your `skylight-mesh.json` when prompted. Done —
+   the lamp appears as an on/off light.
+
+### MQTT bridge (Pi gateway)
+
+The alternative below (`mqtt_bridge.py`) also produces a native HA device via
+MQTT discovery. Use it when HA can't reach the lamp over Bluetooth and a Pi near
+the lamp is the gateway.
+
 ## Usage
 
 ### CLI
@@ -154,6 +207,8 @@ every pull.
 | `meshlib/state.py` | load/save `skylight-mesh.json` |
 | `skylight-bridge.service` | systemd unit |
 | `test_crypto.py` | crypto tests (Bluetooth Mesh spec test vectors) |
+| `custom_components/skylight/` | native Home Assistant integration (HACS), connect-on-demand over HA Bluetooth / ESPHome proxies |
+| `hacs.json` | HACS metadata for the custom repository |
 
 ---
 

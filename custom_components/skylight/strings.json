@@ -1,0 +1,22 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "keys": {
+        "title": "Skylight mesh keys",
+        "description": "Paste the full contents of the `skylight-mesh.json` produced by provisioning {mac} with the project's `provision.py`. It holds the NetKey/AppKey/DevKey and the lamp's unicast address.",
+        "data": {
+          "config_json": "skylight-mesh.json contents"
+        }
+      }
+    },
+    "error": {
+      "invalid_json": "That is not valid JSON. Paste the entire skylight-mesh.json file.",
+      "missing_keys": "The JSON is missing required mesh keys (need mac, net_key, app_key, dev_key, unicast, src, iv_index).",
+      "mac_mismatch": "The MAC in the pasted keys does not match the discovered lamp."
+    },
+    "abort": {
+      "already_configured": "This Skylight is already configured."
+    }
+  }
+}

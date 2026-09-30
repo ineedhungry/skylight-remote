@@ -1,0 +1,18 @@
+{
+  "domain": "skylight",
+  "name": "Philips Skylight (BLE Mesh)",
+  "version": "0.1.0",
+  "codeowners": ["@l-carta"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://gitea.ineedhungry.com/gstranga/skylight-remote",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://gitea.ineedhungry.com/gstranga/skylight-remote/issues",
+  "requirements": ["bleak-retry-connector>=3.5.0"],
+  "bluetooth": [
+    { "local_name": "BK_MESH_light" },
+    { "service_uuid": "00001828-0000-1000-8000-00805f9b34fb" },
+    { "service_uuid": "00001827-0000-1000-8000-00805f9b34fb" }
+  ]
+}
